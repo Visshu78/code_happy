@@ -3,7 +3,7 @@ services:
   livekit:
     image: livekit/livekit-server:latest
     container_name: voice_engine
-    command: --config /livekit.yaml --dev
+    command: --config /livekit.yaml --dev  --node-ip 100.97.80.94
     restart: unless-stopped
     ports:
       - "7880:7880"

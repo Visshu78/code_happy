@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🚨 Security Dashboard</title>
     <style>
         body { font-family: 'Courier New', monospace; background: #111; color: #0f0; padding: 20px; }
@@ -42,13 +41,10 @@
     <script type="module">
         import { Room, RoomEvent } from 'https://cdn.jsdelivr.net/npm/livekit-client@1.15.4/dist/livekit-client.esm.mjs';
 
-        // --- NEW: DYNAMIC IP CONFIGURATION ---
-        // Automatically uses localhost or 192.168.x.x depending on URL
+        // --- DYNAMIC IP CONFIGURATION ---
         const serverIp = window.location.hostname;
-        
         const API_URL = `http://${serverIp}:3000/sos/start-session?type=admin`;
         const WS_URL  = `ws://${serverIp}:7880`;
-        // --------------------------------------
 
         const logsDiv = document.getElementById('logs');
         const listDiv = document.getElementById('participants');
@@ -68,7 +64,7 @@
 
         async function startDashboard() {
             try {
-                log(`Authenticating with Server (${serverIp})...`);
+                log(`Authenticating on ${serverIp}...`);
                 const res = await fetch(API_URL, { method: 'POST' });
                 const data = await res.json();
                 
@@ -91,7 +87,7 @@
                 });
 
                 room.on(RoomEvent.ActiveSpeakersChanged, () => {
-                    render(); // Refresh UI when someone talks
+                    render(); 
                 });
 
                 room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
@@ -103,8 +99,7 @@
                 log("Connecting to Voice Server...");
                 await room.connect(WS_URL, data.token);
                 
-                // --- ENABLE ADMIN MIC (Audio Only) ---
-                log("Activating Admin Microphone...");
+                // --- ENABLE ADMIN MIC ---
                 await room.localParticipant.setMicrophoneEnabled(true);
                 log("🎙️ Admin Mic is LIVE.");
 
@@ -115,7 +110,7 @@
         }
 
         function render() {
-            // SAFETY CHECK: Prevent crash if room isn't ready
+            // FIX: This check prevents the "undefined" crash
             if (!room || !room.remoteParticipants) return;
 
             listDiv.innerHTML = '';
@@ -125,7 +120,6 @@
                 return;
             }
 
-            // Loop through all users
             for (const participant of room.remoteParticipants.values()) {
                 const isVisitor = participant.identity.startsWith('visitor');
                 const isSpeaking = participant.isSpeaking;
@@ -135,10 +129,10 @@
                 div.innerHTML = `
                     <div class="status-dot"></div>
                     <strong>${participant.identity}</strong><br>
-                    <small>${isVisitor ? '⚠️ SOS CALLER' : '🛡️ FELLOW ADMIN'}</small><br>
+                    <small>${isVisitor ? '⚠️ SOS CALLER' : '🛡️ FELLOW ADMIN'}</small>
                 `;
                 
-                // Attach Audio Tracks (So you can hear them!)
+                // Attach Audio
                 participant.audioTracks.forEach(publication => {
                     if (publication.track) {
                         const audioEl = publication.track.attach();
