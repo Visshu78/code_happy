@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🚨 Security Dashboard</title>
     <style>
         body { font-family: 'Courier New', monospace; background: #111; color: #0f0; padding: 20px; }
@@ -41,7 +42,14 @@
     <script type="module">
         import { Room, RoomEvent } from 'https://cdn.jsdelivr.net/npm/livekit-client@1.15.4/dist/livekit-client.esm.mjs';
 
-        const wsUrl = 'ws://127.0.0.1:7880';
+        // --- NEW: DYNAMIC IP CONFIGURATION ---
+        // Automatically uses localhost or 192.168.x.x depending on URL
+        const serverIp = window.location.hostname;
+        
+        const API_URL = `http://${serverIp}:3000/sos/start-session?type=admin`;
+        const WS_URL  = `ws://${serverIp}:7880`;
+        // --------------------------------------
+
         const logsDiv = document.getElementById('logs');
         const listDiv = document.getElementById('participants');
         let room;
@@ -60,8 +68,8 @@
 
         async function startDashboard() {
             try {
-                log("Authenticating as Admin...");
-                const res = await fetch('http://localhost:3000/sos/start-session?type=admin', { method: 'POST' });
+                log(`Authenticating with Server (${serverIp})...`);
+                const res = await fetch(API_URL, { method: 'POST' });
                 const data = await res.json();
                 
                 room = new Room({ adaptiveStream: true, dynacast: true });
@@ -93,9 +101,9 @@
 
                 // --- CONNECT ---
                 log("Connecting to Voice Server...");
-                await room.connect(wsUrl, data.token);
+                await room.connect(WS_URL, data.token);
                 
-                // --- ENABLE ADMIN MIC ---
+                // --- ENABLE ADMIN MIC (Audio Only) ---
                 log("Activating Admin Microphone...");
                 await room.localParticipant.setMicrophoneEnabled(true);
                 log("🎙️ Admin Mic is LIVE.");
@@ -107,7 +115,7 @@
         }
 
         function render() {
-            // CRITICAL FIX: Don't crash if room isn't ready
+            // SAFETY CHECK: Prevent crash if room isn't ready
             if (!room || !room.remoteParticipants) return;
 
             listDiv.innerHTML = '';
@@ -134,7 +142,7 @@
                 participant.audioTracks.forEach(publication => {
                     if (publication.track) {
                         const audioEl = publication.track.attach();
-                        div.appendChild(audioEl); // Add invisible audio element to the card
+                        div.appendChild(audioEl);
                     }
                 });
 
