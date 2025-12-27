@@ -1,0 +1,12 @@
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: livekit_server
+    command: --config /livekit.yaml --dev
+    ports:
+      - "7880:7880"       # API & Signal
+      - "7881:7881"       # WebRTC TCP
+      - "7882:7882/udp"   # WebRTC UDP
+    volumes:
+      - ./livekit.yaml:/livekit.yaml
+    restart: unless-stopped

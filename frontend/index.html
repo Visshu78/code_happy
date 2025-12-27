@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice SOS - Test</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 50px; }
+        
+        #talk-btn {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        #talk-btn:hover { background-color: #0056b3; }
+        #talk-btn.active { background-color: #dc3545; } /* Red when talking */
+
+        #logs {
+            margin-top: 20px;
+            width: 80%;
+            height: 200px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            overflow-y: scroll;
+            background: #f9f9f9;
+            font-family: monospace;
+        }
+        .log-entry { margin-bottom: 5px; border-bottom: 1px solid #eee; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+
+    <h1>Emergency Voice Test</h1>
+    <button id="talk-btn">Talk Now (SOS)</button>
+    <div id="logs"></div>
+
+    <script type="module">
+        import { Room, RoomEvent } from 'https://cdn.jsdelivr.net/npm/livekit-client@1.15.4/dist/livekit-client.esm.mjs';
+
+        const wsUrl = 'ws://localhost:7880'; 
+        
+        // ⚠️ PASTE YOUR GENERATED TOKEN HERE (See Step 2 below)
+        const token = 'eyJhbGciOiJIUzI1NiJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6ImVtZXJnZW5jeS1yb29tIn0sImlzcyI6ImRldmtleSIsImV4cCI6MTc2Njg4NjU2NCwibmJmIjowLCJzdWIiOiJ3ZWJfdXNlcl8xIn0.3Hcvr8bhfYArBg8BVQ1gk7dYllgXikyptIjZbQh4xik';
+
+        const btn = document.getElementById('talk-btn');
+        const logs = document.getElementById('logs');
+        let room = null;
+
+        function log(msg, type = '') {
+            const div = document.createElement('div');
+            div.className = `log-entry ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logs.appendChild(div);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        btn.addEventListener('click', async () => {
+            // If already connected, disconnect (Toggle behavior)
+            if (room && room.state === 'connected') {
+                await room.disconnect();
+                return;
+            }
+
+            try {
+                log("Requesting Microphone Access...", "blue");
+                
+                // 1. Initialize Room
+                room = new Room({
+                    adaptiveStream: true,
+                    dynacast: true,
+                });
+
+                // 2. Setup Event Listeners
+                room.on(RoomEvent.Connected, () => {
+                    log("Connected to Voice Server!", "success");
+                    btn.textContent = "Hang Up";
+                    btn.classList.add('active');
+                });
+
+                room.on(RoomEvent.Disconnected, () => {
+                    log("Disconnected.", "error");
+                    btn.textContent = "Talk Now (SOS)";
+                    btn.classList.remove('active');
+                    room = null;
+                });
+
+                room.on(RoomEvent.MediaDevicesError, (e) => {
+                    log(`Mic Error: ${e.message}`, "error");
+                });
+
+                // 3. Connect
+                log(`Connecting to ${wsUrl}...`);
+                await room.connect(wsUrl, token);
+
+                // 4. Publish Microphone
+                log("Turning on Microphone...");
+                await room.localParticipant.enableCameraAndMicrophone();
+                log("Microphone is LIVE and Audio is transmitting!", "success");
+
+            } catch (error) {
+                log(`Failed: ${error.message}`, "error");
+                console.error(error);
+            }
+        });
+    </script>
+</body>
+</html>

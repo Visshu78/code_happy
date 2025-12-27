@@ -1,0 +1,45 @@
+# --- Security (CRITICAL) ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+*.csr
+certs/*
+!certs/.gitkeep
+
+# --- OS & Editor Files ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.log
+
+# --- Docker ---
+docker-compose.override.yml
+.docker/
+
+# --- Backend (Node.js / Python) ---
+backend/node_modules/
+backend/npm-debug.log
+backend/yarn-error.log
+backend/__pycache__/
+backend/venv/
+backend/env/
+backend/*.sqlite3
+
+# --- Frontend (React/Web) ---
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/.next/
+frontend/out/
+frontend/.eslintcache
+
+# --- Asterisk Specific ---
+# Ignore local logs if you map them to the host
+asterisk/logs/
+# Do NOT ignore your config files (sip.conf etc), 
+# but be careful not to put real passwords in them if you make this public.
