@@ -46,9 +46,25 @@
 
         const wsUrl = 'ws://localhost:7880'; 
         
-        // ⚠️ PASTE YOUR GENERATED TOKEN HERE (See Step 2 below)
-        const token = 'eyJhbGciOiJIUzI1NiJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6ImVtZXJnZW5jeS1yb29tIn0sImlzcyI6ImRldmtleSIsImV4cCI6MTc2Njg4NjU2NCwibmJmIjowLCJzdWIiOiJ3ZWJfdXNlcl8xIn0.3Hcvr8bhfYArBg8BVQ1gk7dYllgXikyptIjZbQh4xik';
-
+        // NEW: Function to get token from API
+        async function getToken() {
+            try {
+                const response = await fetch('http://localhost:3000/sos/start-session', {
+                    method: 'POST'
+                });
+                
+                if (response.status === 429) {
+                    throw new Error("Too many calls! Please wait a minute.");
+                }
+                
+                const data = await response.json();
+                return data.token;
+            } catch (err) {
+                log(`API Error: ${err.message}`, "error");
+                return null;
+            }
+        }
+ 
         const btn = document.getElementById('talk-btn');
         const logs = document.getElementById('logs');
         let room = null;
