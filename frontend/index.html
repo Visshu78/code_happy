@@ -1,12 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Voice SOS - Test</title>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 50px; }
-        
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 50px;
+        }
+
         #talk-btn {
             padding: 15px 30px;
             font-size: 1.2rem;
@@ -17,8 +24,16 @@
             cursor: pointer;
             transition: background 0.3s;
         }
-        #talk-btn:hover { background-color: #0056b3; }
-        #talk-btn.active { background-color: #dc3545; } /* Red when talking */
+
+        #talk-btn:hover {
+            background-color: #0056b3;
+        }
+
+        #talk-btn.active {
+            background-color: #dc3545;
+        }
+
+        /* Red when talking */
 
         #logs {
             margin-top: 20px;
@@ -30,11 +45,22 @@
             background: #f9f9f9;
             font-family: monospace;
         }
-        .log-entry { margin-bottom: 5px; border-bottom: 1px solid #eee; }
-        .error { color: red; }
-        .success { color: green; }
+
+        .log-entry {
+            margin-bottom: 5px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .error {
+            color: red;
+        }
+
+        .success {
+            color: green;
+        }
     </style>
 </head>
+
 <body>
 
     <h1>Emergency Voice Test</h1>
@@ -44,19 +70,19 @@
     <script type="module">
         import { Room, RoomEvent } from 'https://cdn.jsdelivr.net/npm/livekit-client@1.15.4/dist/livekit-client.esm.mjs';
 
-        const wsUrl = 'ws://localhost:7880'; 
-        
+        const wsUrl = 'ws://localhost:7880';
+
         // NEW: Function to get token from API
         async function getToken() {
             try {
                 const response = await fetch('http://localhost:3000/sos/start-session', {
                     method: 'POST'
                 });
-                
+
                 if (response.status === 429) {
                     throw new Error("Too many calls! Please wait a minute.");
                 }
-                
+
                 const data = await response.json();
                 return data.token;
             } catch (err) {
@@ -64,7 +90,7 @@
                 return null;
             }
         }
- 
+
         const btn = document.getElementById('talk-btn');
         const logs = document.getElementById('logs');
         let room = null;
@@ -78,28 +104,31 @@
         }
 
         btn.addEventListener('click', async () => {
-            // If already connected, disconnect (Toggle behavior)
+            // If already connected, disconnect
             if (room && room.state === 'connected') {
                 await room.disconnect();
                 return;
             }
 
             try {
-                log("Requesting Microphone Access...", "blue");
-                
-                // 1. Initialize Room
-                room = new Room({
-                    adaptiveStream: true,
-                    dynacast: true,
-                });
+                log("Requesting Secure Session ID...", "blue");
 
-                // 2. Setup Event Listeners
+                // 1. GET TOKEN FROM BACKEND
+                const token = await getToken();
+                if (!token) return; // Stop if API failed
+
+                log("Session Authorized. Initializing Audio...", "blue");
+
+                // ... (Keep the rest of your existing room setup code here) ...
+                // Initialize Room
+                room = new Room({ adaptiveStream: true, dynacast: true });
+
+                // Setup Event Listeners (Paste your existing listeners here)
                 room.on(RoomEvent.Connected, () => {
                     log("Connected to Voice Server!", "success");
                     btn.textContent = "Hang Up";
                     btn.classList.add('active');
                 });
-
                 room.on(RoomEvent.Disconnected, () => {
                     log("Disconnected.", "error");
                     btn.textContent = "Talk Now (SOS)";
@@ -107,24 +136,18 @@
                     room = null;
                 });
 
-                room.on(RoomEvent.MediaDevicesError, (e) => {
-                    log(`Mic Error: ${e.message}`, "error");
-                });
-
-                // 3. Connect
-                log(`Connecting to ${wsUrl}...`);
+                // Connect using the DYNAMIC token
                 await room.connect(wsUrl, token);
 
-                // 4. Publish Microphone
-                log("Turning on Microphone...");
+                // Publish Mic
                 await room.localParticipant.enableCameraAndMicrophone();
-                log("Microphone is LIVE and Audio is transmitting!", "success");
+                log("Microphone is LIVE!", "success");
 
             } catch (error) {
                 log(`Failed: ${error.message}`, "error");
-                console.error(error);
             }
         });
     </script>
 </body>
+
 </html>
