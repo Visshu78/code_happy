@@ -5,27 +5,39 @@
     <title>🚨 Security Dashboard</title>
     <style>
         body { font-family: sans-serif; background: #222; color: #fff; padding: 20px; }
-        h1 { color: #ff4757; }
+        .hidden { display: none; }
+        
+        /* Start Button (Forces Audio Autoplay) */
+        #start-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 1000;
+        }
+        #start-btn { padding: 20px 40px; font-size: 2rem; background: #ff4757; color: white; border: none; cursor: pointer; border-radius: 8px; }
+
+        /* Dashboard */
         .status { padding: 10px; background: #333; margin-bottom: 20px; border-radius: 4px; }
         .active { color: #2ed573; font-weight: bold; }
         
         #participants { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; }
         .card { background: #444; padding: 15px; border-radius: 8px; border-left: 5px solid #ccc; }
-        .card.visitor { border-color: #ff4757; } /* Red for SOS callers */
-        .card.admin { border-color: #2ed573; }   /* Green for Admins */
-        
-        button { padding: 10px 20px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; margin-top: 10px;}
-        button.mute { background: #dc3545; }
+        .card.visitor { border-color: #ff4757; }
+        .card.admin { border-color: #2ed573; }
+        .speaking { box-shadow: 0 0 10px #2ed573; transition: box-shadow 0.2s; }
     </style>
 </head>
 <body>
+
+    <div id="start-overlay">
+        <button id="start-btn">🛡️ Click to Open Dashboard</button>
+    </div>
+
     <h1>🚨 Operator Dashboard</h1>
-    <div class="status">System Status: <span id="conn-status">Disconnected</span></div>
+    <div class="status">System Status: <span id="conn-status">Waiting...</span></div>
     
     <h3>Active Lines:</h3>
     <div id="participants"></div>
 
-   <script type="module">
+    <script type="module">
         import { Room, RoomEvent } from 'https://cdn.jsdelivr.net/npm/livekit-client@1.15.4/dist/livekit-client.esm.mjs';
 
         const wsUrl = 'ws://127.0.0.1:7880';
@@ -33,83 +45,80 @@
         const statusSpan = document.getElementById('conn-status');
         let room;
 
+        document.getElementById('start-btn').addEventListener('click', async () => {
+            document.getElementById('start-overlay').classList.add('hidden');
+            await init();
+        });
+
         async function init() {
             try {
-                console.log("Fetching Admin Token...");
+                statusSpan.textContent = "Authenticating...";
                 const res = await fetch('http://localhost:3000/sos/start-session?type=admin', { method: 'POST' });
                 const data = await res.json();
                 
-                // 1. Initialize Room
                 room = new Room({ adaptiveStream: true, dynacast: true });
 
-                // 2. Setup Listeners
+                // --- EVENTS ---
                 room.on(RoomEvent.Connected, () => {
-                    console.log("✅ Admin Connected!", room);
                     statusSpan.textContent = "ONLINE - Listening for SOS";
                     statusSpan.className = "active";
                     render();
                 });
 
-                room.on(RoomEvent.ParticipantConnected, (p) => {
-                    console.log("User Joined:", p.identity);
-                    render();
-                });
+                room.on(RoomEvent.ParticipantConnected, render);
+                room.on(RoomEvent.ParticipantDisconnected, render);
+                room.on(RoomEvent.ActiveSpeakersChanged, render); // Updates when someone talks
 
-                room.on(RoomEvent.ParticipantDisconnected, (p) => {
-                    console.log("User Left:", p.identity);
-                    render();
-                });
-
-                // 3. Connect
+                // --- CONNECT ---
                 await room.connect(wsUrl, data.token);
                 
-                // 4. Turn on Admin Mic (Optional, so you can talk back)
-                await room.localParticipant.enableCameraAndMicrophone();
+                // --- AUDIO ONLY ---
+                console.log("Enabling Admin Mic...");
+                await room.localParticipant.setMicrophoneEnabled(true);
 
             } catch (err) {
-                console.error("Connection Failed:", err);
+                console.error(err);
                 statusSpan.textContent = "Error: " + err.message;
-                statusSpan.style.color = "red";
             }
         }
 
         function render() {
-            participantsDiv.innerHTML = ''; // Clear list
+            if (!participantsDiv) return;
             
-            // --- SAFETY CHECK (The Fix) ---
+            // --- THE FIX: SAFETY CHECK ---
+            // If the room isn't ready or participants map is missing, stop instead of crashing.
             if (!room || !room.remoteParticipants) {
-                console.warn("Room not ready yet...");
+                console.warn("Room not ready...");
                 return;
             }
 
-            // Log for debugging
-            console.log("Active Participants:", room.remoteParticipants.size);
+            participantsDiv.innerHTML = ''; 
 
             if (room.remoteParticipants.size === 0) {
-                participantsDiv.innerHTML = '<div style="color:#888; padding:10px;">Waiting for calls... (No active SOS)</div>';
+                participantsDiv.innerHTML = '<div style="color:#888">Waiting for calls...</div>';
                 return;
             }
 
-            // Iterate through the Map of participants
             for (const participant of room.remoteParticipants.values()) {
                 const isVisitor = participant.identity.startsWith('visitor');
-                
                 const div = document.createElement('div');
-                div.className = `card ${isVisitor ? 'visitor' : 'admin'}`;
+                div.className = `card ${isVisitor ? 'visitor' : 'admin'} ${participant.isSpeaking ? 'speaking' : ''}`;
                 
-                // Add a "Talk" indicator if they are speaking
-                const isSpeaking = participant.isSpeaking ? "🔊 Speaking" : "🔇 Silent";
-
                 div.innerHTML = `
                     <strong>${participant.identity}</strong><br>
                     <small>${isVisitor ? '⚠️ SOS CALLER' : '🛡️ Fellow Admin'}</small><br>
-                    <span style="font-size:0.8em; color:#ccc">${isSpeaking}</span>
+                    <small style="color:#aaa">${participant.isSpeaking ? '🔊 Speaking' : 'Checking...'}</small>
                 `;
                 participantsDiv.appendChild(div);
+                
+                // Attach Audio
+                if (participant.audioTracks.size > 0) {
+                     participant.audioTracks.forEach(trackPub => {
+                         if (trackPub.track) trackPub.track.attach(div);
+                     });
+                }
             }
         }
-
-        init();
     </script>
 </body>
 </html>

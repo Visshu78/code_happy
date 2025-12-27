@@ -140,7 +140,8 @@
                 await room.connect(wsUrl, token);
 
                 // Publish Mic
-                await room.localParticipant.enableCameraAndMicrophone();
+                // Audio only!
+                await room.localParticipant.setMicrophoneEnabled(true); 
                 log("Microphone is LIVE!", "success");
 
             } catch (error) {
