@@ -4,55 +4,63 @@
     <meta charset="UTF-8">
     <title>🚨 Security Dashboard</title>
     <style>
-        body { font-family: sans-serif; background: #222; color: #fff; padding: 20px; }
-        .hidden { display: none; }
+        body { font-family: 'Courier New', monospace; background: #111; color: #0f0; padding: 20px; }
         
-        /* Start Button (Forces Audio Autoplay) */
+        /* Start Overlay */
         #start-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 1000;
+            background: rgba(0,0,0,0.95); display: flex; justify-content: center; align-items: center; z-index: 1000;
         }
-        #start-btn { padding: 20px 40px; font-size: 2rem; background: #ff4757; color: white; border: none; cursor: pointer; border-radius: 8px; }
+        #start-btn { padding: 20px 40px; font-size: 1.5rem; background: #c0392b; color: white; border: 2px solid #fff; cursor: pointer; text-transform: uppercase; font-weight: bold; }
 
-        /* Dashboard */
-        .status { padding: 10px; background: #333; margin-bottom: 20px; border-radius: 4px; }
-        .active { color: #2ed573; font-weight: bold; }
+        /* Logs Area */
+        #logs { height: 150px; overflow-y: scroll; border: 1px solid #333; padding: 10px; margin-bottom: 20px; color: #888; font-size: 0.9rem; }
+        .log-entry { margin-bottom: 2px; }
+
+        /* Grid */
+        #participants { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
         
-        #participants { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; }
-        .card { background: #444; padding: 15px; border-radius: 8px; border-left: 5px solid #ccc; }
-        .card.visitor { border-color: #ff4757; }
-        .card.admin { border-color: #2ed573; }
-        .speaking { box-shadow: 0 0 10px #2ed573; transition: box-shadow 0.2s; }
+        .card { background: #222; padding: 15px; border: 1px solid #444; border-left: 5px solid #ccc; }
+        .card.visitor { border-left-color: #e74c3c; } /* Red for Visitor */
+        .card.admin { border-left-color: #2ecc71; }   /* Green for Admin */
+        
+        .status-dot { height: 10px; width: 10px; background-color: #555; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        .speaking .status-dot { background-color: #e74c3c; box-shadow: 0 0 8px #e74c3c; }
     </style>
 </head>
 <body>
 
     <div id="start-overlay">
-        <button id="start-btn">🛡️ Click to Open Dashboard</button>
+        <button id="start-btn">🛡️ CLICK TO START DASHBOARD</button>
     </div>
 
-    <h1>🚨 Operator Dashboard</h1>
-    <div class="status">System Status: <span id="conn-status">Waiting...</span></div>
-    
-    <h3>Active Lines:</h3>
+    <h1>🚨 OPERATOR CONSOLE</h1>
+    <div id="logs"></div>
     <div id="participants"></div>
 
     <script type="module">
         import { Room, RoomEvent } from 'https://cdn.jsdelivr.net/npm/livekit-client@1.15.4/dist/livekit-client.esm.mjs';
 
         const wsUrl = 'ws://127.0.0.1:7880';
-        const participantsDiv = document.getElementById('participants');
-        const statusSpan = document.getElementById('conn-status');
+        const logsDiv = document.getElementById('logs');
+        const listDiv = document.getElementById('participants');
         let room;
 
+        function log(msg) {
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            div.innerText = `> ${msg}`;
+            logsDiv.prepend(div);
+        }
+
         document.getElementById('start-btn').addEventListener('click', async () => {
-            document.getElementById('start-overlay').classList.add('hidden');
-            await init();
+            document.getElementById('start-overlay').style.display = 'none';
+            await startDashboard();
         });
 
-        async function init() {
+        async function startDashboard() {
             try {
-                statusSpan.textContent = "Authenticating...";
+                log("Authenticating as Admin...");
                 const res = await fetch('http://localhost:3000/sos/start-session?type=admin', { method: 'POST' });
                 const data = await res.json();
                 
@@ -60,63 +68,77 @@
 
                 // --- EVENTS ---
                 room.on(RoomEvent.Connected, () => {
-                    statusSpan.textContent = "ONLINE - Listening for SOS";
-                    statusSpan.className = "active";
+                    log("✅ CONNECTED to System.");
                     render();
                 });
 
-                room.on(RoomEvent.ParticipantConnected, render);
-                room.on(RoomEvent.ParticipantDisconnected, render);
-                room.on(RoomEvent.ActiveSpeakersChanged, render); // Updates when someone talks
+                room.on(RoomEvent.ParticipantConnected, (p) => {
+                    log(`Detected User: ${p.identity}`);
+                    render();
+                });
+
+                room.on(RoomEvent.ParticipantDisconnected, (p) => {
+                    log(`User Left: ${p.identity}`);
+                    render();
+                });
+
+                room.on(RoomEvent.ActiveSpeakersChanged, () => {
+                    render(); // Refresh UI when someone talks
+                });
+
+                room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                    log(`Audio Track Received from ${participant.identity}`);
+                    render();
+                });
 
                 // --- CONNECT ---
+                log("Connecting to Voice Server...");
                 await room.connect(wsUrl, data.token);
                 
-                // --- AUDIO ONLY ---
-                console.log("Enabling Admin Mic...");
+                // --- ENABLE ADMIN MIC ---
+                log("Activating Admin Microphone...");
                 await room.localParticipant.setMicrophoneEnabled(true);
+                log("🎙️ Admin Mic is LIVE.");
 
             } catch (err) {
+                log(`❌ CRITICAL ERROR: ${err.message}`);
                 console.error(err);
-                statusSpan.textContent = "Error: " + err.message;
             }
         }
 
         function render() {
-            if (!participantsDiv) return;
+            // CRITICAL FIX: Don't crash if room isn't ready
+            if (!room || !room.remoteParticipants) return;
+
+            listDiv.innerHTML = '';
             
-            // --- THE FIX: SAFETY CHECK ---
-            // If the room isn't ready or participants map is missing, stop instead of crashing.
-            if (!room || !room.remoteParticipants) {
-                console.warn("Room not ready...");
-                return;
-            }
-
-            participantsDiv.innerHTML = ''; 
-
             if (room.remoteParticipants.size === 0) {
-                participantsDiv.innerHTML = '<div style="color:#888">Waiting for calls...</div>';
+                listDiv.innerHTML = '<h3 style="color:#555">WAITING FOR CALLS...</h3>';
                 return;
             }
 
+            // Loop through all users
             for (const participant of room.remoteParticipants.values()) {
                 const isVisitor = participant.identity.startsWith('visitor');
+                const isSpeaking = participant.isSpeaking;
+
                 const div = document.createElement('div');
-                div.className = `card ${isVisitor ? 'visitor' : 'admin'} ${participant.isSpeaking ? 'speaking' : ''}`;
-                
+                div.className = `card ${isVisitor ? 'visitor' : 'admin'} ${isSpeaking ? 'speaking' : ''}`;
                 div.innerHTML = `
+                    <div class="status-dot"></div>
                     <strong>${participant.identity}</strong><br>
-                    <small>${isVisitor ? '⚠️ SOS CALLER' : '🛡️ Fellow Admin'}</small><br>
-                    <small style="color:#aaa">${participant.isSpeaking ? '🔊 Speaking' : 'Checking...'}</small>
+                    <small>${isVisitor ? '⚠️ SOS CALLER' : '🛡️ FELLOW ADMIN'}</small><br>
                 `;
-                participantsDiv.appendChild(div);
                 
-                // Attach Audio
-                if (participant.audioTracks.size > 0) {
-                     participant.audioTracks.forEach(trackPub => {
-                         if (trackPub.track) trackPub.track.attach(div);
-                     });
-                }
+                // Attach Audio Tracks (So you can hear them!)
+                participant.audioTracks.forEach(publication => {
+                    if (publication.track) {
+                        const audioEl = publication.track.attach();
+                        div.appendChild(audioEl); // Add invisible audio element to the card
+                    }
+                });
+
+                listDiv.appendChild(div);
             }
         }
     </script>
