@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice SOS - Test</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 50px;
+        }
+
+        #talk-btn {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        #talk-btn:hover {
+            background-color: #0056b3;
+        }
+
+        #talk-btn.active {
+            background-color: #dc3545;
+        }
+
+        /* Red when talking */
+
+        #logs {
+            margin-top: 20px;
+            width: 80%;
+            height: 200px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            overflow-y: scroll;
+            background: #f9f9f9;
+            font-family: monospace;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .error {
+            color: red;
+        }
+
+        .success {
+            color: green;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Emergency Voice Test</h1>
+    <button id="talk-btn">Talk Now (SOS)</button>
+    <div id="logs"></div>
+
+    <script type="module">
+        import { Room, RoomEvent } from 'https://cdn.jsdelivr.net/npm/livekit-client@1.15.4/dist/livekit-client.esm.mjs';
+
+        // --- NEW: DYNAMIC IP CONFIGURATION ---
+        // This automatically grabs the IP (localhost or 192.168.x.x) from the browser URL
+        const serverIp = window.location.hostname;
+        
+        const API_URL = `http://${serverIp}:3000/sos/start-session`;
+        const WS_URL  = `ws://${serverIp}:7880`;
+
+        console.log(`Dynamic Configuration: Connecting to ${serverIp}`);
+        // --------------------------------------
+
+        async function getToken() {
+            try {
+                // Use the dynamic API_URL
+                const response = await fetch(API_URL, {
+                    method: 'POST'
+                });
+
+                if (response.status === 429) {
+                    throw new Error("Too many calls! Please wait a minute.");
+                }
+
+                const data = await response.json();
+                return data.token;
+            } catch (err) {
+                log(`API Error: ${err.message}`, "error");
+                return null;
+            }
+        }
+
+        const btn = document.getElementById('talk-btn');
+        const logs = document.getElementById('logs');
+        let room = null;
+
+        function log(msg, type = '') {
+            const div = document.createElement('div');
+            div.className = `log-entry ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logs.appendChild(div);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        btn.addEventListener('click', async () => {
+            // If already connected, disconnect
+            if (room && room.state === 'connected') {
+                await room.disconnect();
+                return;
+            }
+
+            try {
+                log("Requesting Secure Session ID...", "blue");
+
+                // 1. GET TOKEN FROM BACKEND
+                const token = await getToken();
+                if (!token) return; // Stop if API failed
+
+                log("Session Authorized. Initializing Audio...", "blue");
+
+                // Initialize Room
+                room = new Room({ adaptiveStream: true, dynacast: true });
+
+                // Setup Event Listeners
+                room.on(RoomEvent.Connected, () => {
+                    log("Connected to Voice Server!", "success");
+                    btn.textContent = "Hang Up";
+                    btn.classList.add('active');
+                });
+                room.on(RoomEvent.Disconnected, () => {
+                    log("Disconnected.", "error");
+                    btn.textContent = "Talk Now (SOS)";
+                    btn.classList.remove('active');
+                    room = null;
+                });
+
+                // Connect using the DYNAMIC token and DYNAMIC WS URL
+                await room.connect(WS_URL, token);
+
+                // Publish Mic (Audio Only - Safer for mobile/laptops without webcams)
+                await room.localParticipant.setMicrophoneEnabled(true); 
+                log("Microphone is LIVE!", "success");
+
+            } catch (error) {
+                log(`Failed: ${error.message}`, "error");
+            }
+        });
+    </script>
+</body>
+
+</html>
