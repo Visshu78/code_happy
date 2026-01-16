@@ -1,20 +1,66 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Voice SOS - Test</title>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 50px; }
-        #talk-btn { padding: 15px 30px; font-size: 1.2rem; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; transition: background 0.3s; }
-        #talk-btn:hover { background-color: #0056b3; }
-        #talk-btn.active { background-color: #dc3545; }
-        #logs { margin-top: 20px; width: 80%; height: 200px; border: 1px solid #ccc; padding: 10px; overflow-y: scroll; background: #f9f9f9; font-family: monospace; }
-        .log-entry { margin-bottom: 5px; border-bottom: 1px solid #eee; }
-        .error { color: red; }
-        .success { color: green; }
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 50px;
+        }
+
+        #talk-btn {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        #talk-btn:hover {
+            background-color: #0056b3;
+        }
+
+        #talk-btn.active {
+            background-color: #dc3545;
+        }
+
+        /* Red when talking */
+
+        #logs {
+            margin-top: 20px;
+            width: 80%;
+            height: 200px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            overflow-y: scroll;
+            background: #f9f9f9;
+            font-family: monospace;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .error {
+            color: red;
+        }
+
+        .success {
+            color: green;
+        }
     </style>
 </head>
+
 <body>
 
     <h1>Emergency Voice Test</h1>
@@ -24,22 +70,27 @@
     <script type="module">
         import { Room, RoomEvent } from 'https://cdn.jsdelivr.net/npm/livekit-client@1.15.4/dist/livekit-client.esm.mjs';
 
-        // --- NEW CONFIGURATION (SECURE) ---
-        // 1. API: Use relative path (Nginx handles the routing)
-        const API_URL = "/api/sos/start-session";
+        // --- NEW: DYNAMIC IP CONFIGURATION ---
+        // This automatically grabs the IP (localhost or 192.168.x.x) from the browser URL
+        const serverIp = window.location.hostname;
         
-        // 2. WEBSOCKET: Auto-detect secure (wss) or insecure (ws)
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const WS_URL  = `${protocol}//${window.location.host}/livekit`;
+        const API_URL = `http://${serverIp}:3000/sos/start-session`;
+        const WS_URL  = `ws://${serverIp}:7880`;
 
-        console.log(`Connecting to API: ${API_URL}`);
-        console.log(`Connecting to WS:  ${WS_URL}`);
-        // ----------------------------------
+        console.log(`Dynamic Configuration: Connecting to ${serverIp}`);
+        // --------------------------------------
 
         async function getToken() {
             try {
-                const response = await fetch(API_URL, { method: 'POST' });
-                if (!response.ok) throw new Error(`Server Error: ${response.status}`);
+                // Use the dynamic API_URL
+                const response = await fetch(API_URL, {
+                    method: 'POST'
+                });
+
+                if (response.status === 429) {
+                    throw new Error("Too many calls! Please wait a minute.");
+                }
+
                 const data = await response.json();
                 return data.token;
             } catch (err) {
@@ -61,18 +112,25 @@
         }
 
         btn.addEventListener('click', async () => {
+            // If already connected, disconnect
             if (room && room.state === 'connected') {
                 await room.disconnect();
                 return;
             }
+
             try {
                 log("Requesting Secure Session ID...", "blue");
+
+                // 1. GET TOKEN FROM BACKEND
                 const token = await getToken();
-                if (!token) return; 
+                if (!token) return; // Stop if API failed
 
                 log("Session Authorized. Initializing Audio...", "blue");
+
+                // Initialize Room
                 room = new Room({ adaptiveStream: true, dynacast: true });
 
+                // Setup Event Listeners
                 room.on(RoomEvent.Connected, () => {
                     log("Connected to Voice Server!", "success");
                     btn.textContent = "Hang Up";
@@ -85,7 +143,10 @@
                     room = null;
                 });
 
+                // Connect using the DYNAMIC token and DYNAMIC WS URL
                 await room.connect(WS_URL, token);
+
+                // Publish Mic (Audio Only - Safer for mobile/laptops without webcams)
                 await room.localParticipant.setMicrophoneEnabled(true); 
                 log("Microphone is LIVE!", "success");
 
@@ -95,4 +156,5 @@
         });
     </script>
 </body>
+
 </html>
