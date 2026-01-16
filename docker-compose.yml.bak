@@ -3,7 +3,7 @@ services:
   livekit:
     image: livekit/livekit-server:latest
     container_name: voice_engine
-    command: --config /livekit.yaml --dev --node-ip 100.97.80.94
+    command: --config /livekit.yaml --dev  --node-ip 100.97.80.94
     restart: unless-stopped
     ports:
       - "7880:7880"
@@ -12,36 +12,24 @@ services:
     volumes:
       - ./livekit-voice/livekit.yaml:/livekit.yaml
 
-  # 2. Backend
+  # 2. Authentication API
   backend:
     build: ./backend
     container_name: voice_api
     restart: always
+    ports:
+      - "3000:3000"
     environment:
       - PORT=3000
     depends_on:
       - livekit
 
-  # 3. Frontend
+  # 3. User Interface (Web Server)
   frontend:
     build: ./frontend
     container_name: voice_web
     restart: always
-    depends_on:
-      - backend
-
-  # 4. NGINX Reverse Proxy (New)
-  nginx:
-    image: nginx:latest
-    container_name: voice_proxy
-    restart: always
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./certs:/etc/nginx/certs:ro
+      - "8000:80"  # We map port 8000 on laptop to port 80 inside container
     depends_on:
-      - frontend
       - backend
-      - livekit
