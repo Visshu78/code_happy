@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>🚨 Security Dashboard</title>
+    <style>
+        body { font-family: 'Courier New', monospace; background: #111; color: #0f0; padding: 20px; }
+        #start-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        #start-btn { padding: 20px 40px; font-size: 1.5rem; background: #c0392b; color: white; border: 2px solid #fff; cursor: pointer; text-transform: uppercase; font-weight: bold; }
+        #logs { height: 150px; overflow-y: scroll; border: 1px solid #333; padding: 10px; margin-bottom: 20px; color: #888; font-size: 0.9rem; }
+        .log-entry { margin-bottom: 2px; }
+        #participants { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
+        .card { background: #222; padding: 15px; border: 1px solid #444; border-left: 5px solid #ccc; }
+        .card.visitor { border-left-color: #e74c3c; } 
+        .card.admin { border-left-color: #2ecc71; }   
+        .status-dot { height: 10px; width: 10px; background-color: #555; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        .speaking .status-dot { background-color: #e74c3c; box-shadow: 0 0 8px #e74c3c; }
+    </style>
+</head>
+<body>
+
+    <div id="start-overlay">
+        <button id="start-btn">🛡️ CLICK TO START DASHBOARD</button>
+    </div>
+
+    <h1>🚨 OPERATOR CONSOLE</h1>
+    <div id="logs"></div>
+    <div id="participants"></div>
+
+    <script type="module">
+        import { Room, RoomEvent } from 'https://cdn.jsdelivr.net/npm/livekit-client@1.15.4/dist/livekit-client.esm.mjs';
+
+        // --- NEW CONFIGURATION (SECURE) ---
+        const API_URL = "/api/sos/start-session?type=admin";
+        
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const WS_URL  = `${protocol}//${window.location.host}/livekit`;
+        // ----------------------------------
+
+        const logsDiv = document.getElementById('logs');
+        const listDiv = document.getElementById('participants');
+        let room;
+
+        function log(msg) {
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            div.innerText = `> ${msg}`;
+            logsDiv.prepend(div);
+        }
+
+        document.getElementById('start-btn').addEventListener('click', async () => {
+            document.getElementById('start-overlay').style.display = 'none';
+            await startDashboard();
+        });
+
+        async function startDashboard() {
+            try {
+                log(`Authenticating...`);
+                const res = await fetch(API_URL, { method: 'POST' });
+                if (!res.ok) throw new Error(`Auth failed: ${res.status}`);
+                const data = await res.json();
+                
+                room = new Room({ adaptiveStream: true, dynacast: true });
+
+                room.on(RoomEvent.Connected, () => { log("✅ CONNECTED to System."); render(); });
+                room.on(RoomEvent.ParticipantConnected, (p) => { log(`Detected User: ${p.identity}`); render(); });
+                room.on(RoomEvent.ParticipantDisconnected, (p) => { log(`User Left: ${p.identity}`); render(); });
+                room.on(RoomEvent.ActiveSpeakersChanged, () => { render(); });
+                room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                    log(`Audio Track Received from ${participant.identity}`);
+                    render();
+                });
+
+                log("Connecting to Voice Server...");
+                await room.connect(WS_URL, data.token);
+                await room.localParticipant.setMicrophoneEnabled(true);
+                log("🎙️ Admin Mic is LIVE.");
+
+            } catch (err) {
+                log(`❌ CRITICAL ERROR: ${err.message}`);
+                console.error(err);
+            }
+        }
+
+        function render() {
+            if (!room || !room.remoteParticipants) return;
+            listDiv.innerHTML = '';
+            
+            if (room.remoteParticipants.size === 0) {
+                listDiv.innerHTML = '<h3 style="color:#555">WAITING FOR CALLS...</h3>';
+                return;
+            }
+
+            for (const participant of room.remoteParticipants.values()) {
+                const isVisitor = participant.identity.startsWith('visitor');
+                const isSpeaking = participant.isSpeaking;
+
+                const div = document.createElement('div');
+                div.className = `card ${isVisitor ? 'visitor' : 'admin'} ${isSpeaking ? 'speaking' : ''}`;
+                div.innerHTML = `<div class="status-dot"></div><strong>${participant.identity}</strong><br><small>${isVisitor ? '⚠️ SOS CALLER' : '🛡️ FELLOW ADMIN'}</small>`;
+                
+                participant.audioTracks.forEach(publication => {
+                    if (publication.track) {
+                        const audioEl = publication.track.attach();
+                        div.appendChild(audioEl);
+                    }
+                });
+                listDiv.appendChild(div);
+            }
+        }
+    </script>
+</body>
+</html>
