@@ -1,0 +1,12 @@
+# Ignore actual configuration files with real passwords
+secure_server.py
+launch_jarbes.sh
+frontend/index.html
+/keys/
+*.pem
+*.crt
+*.key
+
+# Force Git to track the example files
+!frontend/index.html.example
+!configs/pjsip.conf.example

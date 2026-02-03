@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Jarbes Stabilized Engine</title>
+    <script src="jssip.min.js"></script>
+    <style>
+        body { background-color: #050505; color: #0f0; font-family: 'Courier New', monospace; text-align: center; padding: 10px; }
+        .box { border: 1px solid #333; padding: 10px; margin: 10px auto; width: 90%; max-width: 400px; border-radius: 8px; background: #111; }
+        input { background: #222; color: white; border: 1px solid #444; padding: 10px; width: 60%; text-align: center; border-radius: 4px; font-size: 16px; }
+        button { border: none; padding: 15px; cursor: pointer; width: 90%; font-weight: bold; font-size: 16px; margin: 5px; border-radius: 4px; transition: 0.2s; }
+        .btn-init { background: #444; color: #fff; }
+        .btn-call { background: #008800; color: white; }
+        .btn-answer { background: #0044ff; color: white; animation: pulse 0.8s infinite; display: none; }
+        .btn-hangup { background: #aa0000; color: white; display: none; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+        
+        .meter-container { display: flex; justify-content: space-around; margin-top: 15px; }
+        .meter { width: 40px; height: 120px; background: #222; position: relative; border-radius: 4px; overflow: hidden; }
+        .bar { position: absolute; bottom: 0; left: 0; right: 0; background: lime; height: 0%; transition: height 0.05s; }
+        .label { font-size: 10px; margin-top: 5px; color: #888; text-transform: uppercase; }
+        #status { font-size: 18px; margin-bottom: 10px; color: #888; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h2>🔊 JARBES STABLE LINE</h2>
+    <div id="status">WAITING...</div>
+
+    <div class="box">
+        <input type="text" id="myExt" placeholder="My ID (e.g. 6001)">
+        <button id="btn-init" class="btn-init" onclick="initSystem()">🔒 INITIALIZE</button>
+    </div>
+
+    <div class="box">
+        <input type="text" id="targetExt" placeholder="Target ID (e.g. 6002)">
+        <button id="btn-call" class="btn-call" onclick="startCall()">📞 SECURE CALL</button>
+        <button id="btn-answer" class="btn-answer" onclick="answerCall()">🔊 ACCEPT CALL</button>
+        <button id="btn-hangup" class="btn-hangup" onclick="hangupCall()">❌ DISCONNECT</button>
+    </div>
+
+    <div class="meter-container">
+        <div>
+            <div class="meter"><div id="micBar" class="bar"></div></div>
+            <div class="label">MY MIC</div>
+        </div>
+        <div>
+            <div class="meter"><div id="remoteBar" class="bar"></div></div>
+            <div class="label">INCOMING</div>
+        </div>
+    </div>
+
+    <audio id="remoteAudio" autoplay playsinline></audio>
+
+    <script>
+        const SERVER_IP = '172.16.208.59'; 
+        const PORT = '8089';
+        
+        var ua = null;
+        var mySession = null;
+        var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // 🛡️ NOISE CANCELLATION MATRIX
+        const mediaConstraints = {
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            },
+            video: false
+        };
+
+        function wakeUpAudio() { if (audioCtx.state === 'suspended') audioCtx.resume(); }
+
+        function initSystem() {
+            wakeUpAudio();
+            var user = document.getElementById('myExt').value;
+            if(!user) return alert("ID Required");
+            
+            document.getElementById('btn-init').innerText = "CONNECTING...";
+            
+            var socket = new JsSIP.WebSocketInterface('wss://' + SERVER_IP + ':' + PORT + '/ws');
+            var config = { sockets: [ socket ], uri: 'sip:' + user + '@' + SERVER_IP, password: 'YOUR_PASSWORD_HERE', register: true };
+
+            ua = new JsSIP.UA(config);
+            ua.start();
+
+            ua.on('registered', () => { 
+                document.getElementById('status').innerText = "✅ ONLINE: " + user;
+                document.getElementById('status').style.color = "#0f0";
+                document.getElementById('btn-init').style.display = 'none';
+            });
+
+            ua.on('newRTCSession', (data) => {
+                mySession = data.session;
+                
+                if (mySession.direction === 'incoming') {
+                    document.getElementById('status').innerText = "📞 INCOMING SIGNAL...";
+                    document.getElementById('status').style.color = "#0088ff";
+                    toggleButtons('incoming');
+                    wakeUpAudio();
+                }
+
+                mySession.on('accepted', () => {
+                   document.getElementById('status').innerText = "🔊 AUDIO ACTIVE";
+                   document.getElementById('status').style.color = "#0f0";
+                   toggleButtons('connected');
+                });
+
+                mySession.on('peerconnection', (e) => {
+                    // HANDLE REMOTE AUDIO
+                    e.peerconnection.ontrack = (evt) => {
+                        var audio = document.getElementById('remoteAudio');
+                        audio.srcObject = evt.streams[0];
+                        audio.play();
+                        attachVisualizer(evt.streams[0], 'remoteBar');
+                    };
+                    
+                    // HANDLE LOCAL AUDIO (With Safety Check)
+                    var senders = e.peerconnection.getSenders();
+                    var localStream = new MediaStream();
+                    senders.forEach(sender => { 
+                        if(sender.track && sender.track.kind === 'audio') {
+                            localStream.addTrack(sender.track);
+                        }
+                    });
+                    
+                    // ONLY ATTACH IF TRACKS EXIST
+                    if (localStream.getAudioTracks().length > 0) {
+                        attachVisualizer(localStream, 'micBar');
+                    }
+                });
+
+                mySession.on('ended', () => resetUI());
+                mySession.on('failed', () => resetUI());
+            });
+        }
+
+        function startCall() {
+            wakeUpAudio();
+            var target = document.getElementById('targetExt').value;
+            if(!target) return alert("Target Required");
+            
+            // Prevent double click
+            document.getElementById('btn-call').disabled = true;
+            
+            ua.call('sip:' + target + '@' + SERVER_IP, { mediaConstraints: mediaConstraints });
+            toggleButtons('connected');
+        }
+
+        function answerCall() {
+            wakeUpAudio();
+            if(mySession) {
+                // Prevent double click crash
+                document.getElementById('btn-answer').disabled = true;
+                mySession.answer({ mediaConstraints: mediaConstraints });
+            }
+        }
+
+        function hangupCall() {
+            if(mySession) mySession.terminate();
+        }
+
+        function toggleButtons(state) {
+            document.getElementById('btn-call').style.display = 'none';
+            document.getElementById('btn-answer').style.display = 'none';
+            document.getElementById('btn-hangup').style.display = 'none';
+            
+            if(state === 'incoming') {
+                document.getElementById('btn-answer').style.display = 'block';
+                document.getElementById('btn-answer').disabled = false;
+            }
+            if(state === 'connected') document.getElementById('btn-hangup').style.display = 'block';
+        }
+
+        function resetUI() {
+            document.getElementById('status').innerText = "READY";
+            document.getElementById('status').style.color = "#888";
+            document.getElementById('btn-call').style.display = 'block';
+            document.getElementById('btn-call').disabled = false;
+            document.getElementById('btn-answer').style.display = 'none';
+            document.getElementById('btn-hangup').style.display = 'none';
+            mySession = null;
+        }
+
+        function attachVisualizer(stream, elementId) {
+            // 🛑 SAFETY CHECK: CRASH PREVENTION
+            if (!stream || stream.getAudioTracks().length === 0) {
+                console.log("Waiting for audio tracks...");
+                return;
+            }
+
+            try {
+                const source = audioCtx.createMediaStreamSource(stream);
+                const analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                
+                // For remote audio, connect to speakers. Local mic should NOT connect to speakers (prevents echo).
+                if (elementId === 'remoteBar') analyser.connect(audioCtx.destination);
+
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                const bar = document.getElementById(elementId);
+
+                function draw() {
+                    if(!mySession) { bar.style.height = "0%"; return; }
+                    requestAnimationFrame(draw);
+                    analyser.getByteFrequencyData(dataArray);
+                    let sum = 0;
+                    for(let i = 0; i < bufferLength; i++) sum += dataArray[i];
+                    bar.style.height = (sum / bufferLength * 3) + "%"; 
+                }
+                draw();
+            } catch (e) {
+                console.error("Visualizer Safe-Fail:", e);
+            }
+        }
+    </script>
+</body>
+</html>
