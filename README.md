@@ -95,6 +95,61 @@ To ensure all components start in the correct order, use the following sequence:
     sudo python3 ../secure_server.py
     ```
 
+(Steps for setting up voip  calling     after  cloning the repo)
+    Step 1: Clone the Repository
+
+The user downloads the code to their machine.
+Bash
+
+git clone https://github.com/Visshu78/Code_happy.git
+cd Code_happy
+
+Step 2: Generate Security Keys (The Missing Piece)
+
+Because you didn't upload your private keys (which is good!), they must generate their own.
+Bash
+
+# Create the keys folder
+sudo mkdir -p /etc/asterisk/keys
+
+# Generate new SSL certificates (They hit 'Enter' for all questions)
+sudo openssl req -new -x509 -days 365 -nodes -out /etc/asterisk/keys/asterisk.crt -keyout /etc/asterisk/keys/asterisk.key
+
+# Combine them for Asterisk
+sudo cat /etc/asterisk/keys/asterisk.key > /etc/asterisk/keys/asterisk.pem
+
+Step 3: Restore the Passwords
+
+They need to edit two files to set their own real password.
+
+A. Edit the Core Config:
+Bash
+
+nano configs/pjsip.conf
+
+    Change password=YOUR_PASSWORD_HERE to password=1234 (or whatever they want).
+
+    Move it to the system folder:
+    Bash
+
+    sudo cp configs/pjsip.conf /etc/asterisk/pjsip.conf
+
+B. Edit the Frontend Interface:
+Bash
+
+nano frontend/index.html
+
+    Find var password = 'YOUR_PASSWORD_HERE'; and change it to 1234.
+
+    Find var server = 'wss://192.168.x.x:8089/ws'; and change the IP to their laptop's IP.
+
+Step 4: Launch!
+
+Now they just run your launcher.
+Bash
+
+./launch_jarbes.sh
+
 ### Making a Call
 1.  Open a web browser on a client device (Phone/Laptop) and navigate to `https://<YOUR_SERVER_IP>:8000`.
 2.  Accept the security warning (required for self-signed certificates).
