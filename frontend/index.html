@@ -22,7 +22,7 @@
     </style>
 </head>
 <body>
-    <h2>🔊 JARBES STABLE LINE</h2>
+    <h2>🔊 STABLE LINE</h2>
     <div id="status">WAITING...</div>
     <div class="box">
         <input type="text" id="myExt" placeholder="My ID (e.g. 6001)">
@@ -40,8 +40,8 @@
     </div>
     <audio id="remoteAudio" autoplay playsinline></audio>
     <script>
-        // 🛡️ SMART IP DETECTION
-        const SERVER_IP = (window.location.hostname && window.location.hostname !== "") ? window.location.hostname : '172.16.206.254';
+        // 🛡️ SMART IP DETECTION - UNIVERSAL DEPLOYMENT
+        const SERVER_IP = window.location.hostname;
         const PORT = '8089';
         
         var ua = null;
@@ -51,7 +51,7 @@
         function initSystem() {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             var user = document.getElementById('myExt').value;
-            if(!user) return alert("ID Required");
+            if(!user) return alert("ID Required, Sir.");
             
             document.getElementById('btn-init').innerText = "CONNECTING...";
             var socket = new JsSIP.WebSocketInterface('wss://' + SERVER_IP + ':' + PORT + '/ws');
@@ -75,8 +75,15 @@
                 mySession.on('accepted', () => {
                    document.getElementById('status').innerText = "🔊 AUDIO ACTIVE";
                    document.getElementById('btn-hangup').style.display = 'block';
+                   document.getElementById('btn-answer').style.display = 'none';
+                });
+                mySession.on('peerconnection', (e) => {
+                    e.peerconnection.ontrack = (evt) => {
+                        document.getElementById('remoteAudio').srcObject = evt.streams[0];
+                    };
                 });
                 mySession.on('ended', () => location.reload());
+                mySession.on('failed', () => location.reload());
             });
         }
 
@@ -96,5 +103,4 @@
     </script>
 </body>
 </html>
-
 
